@@ -18,7 +18,7 @@ npm start           # Production start (node dist/server.js)
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | Yes | -- | Anthropic API key for Claude Agent SDK |
+| `ANTHROPIC_API_KEY` | No* | -- | Anthropic API key (*or use OAuth via POST /v1/auth/login) |
 | `API_KEYS` | Yes | `default:changeme` | Comma-separated `label:key` pairs for client auth |
 | `PORT` | No | `3001` | HTTP listen port |
 | `HOST` | No | `0.0.0.0` | Bind address |

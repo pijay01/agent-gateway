@@ -6,7 +6,7 @@ Standalone REST API service that wraps the [Claude Agent SDK](https://docs.anthr
 
 ```bash
 cp .env.example .env
-# Edit .env: set ANTHROPIC_API_KEY and API_KEYS
+# Edit .env: set API_KEYS (gateway auth) and choose an Anthropic auth method below
 
 docker compose up -d --build
 ```
@@ -15,6 +15,38 @@ The gateway is now running at `http://localhost:3001`. Verify with:
 
 ```bash
 curl http://localhost:3001/health
+```
+
+### Anthropic Authentication
+
+The Agent Gateway needs Anthropic credentials to run Claude agents. Two methods:
+
+**Option A: OAuth (recommended)** — Interactive login via Claude CLI. No API key needed.
+
+```bash
+# 1. Start the OAuth flow
+curl -X POST http://localhost:3001/v1/auth/login \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# 2. Open the returned URL in your browser, authorize, copy the code
+
+# 3. Submit the code (include the full code with # and state)
+curl -X POST http://localhost:3001/v1/auth/submit-code \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"code": "code#state"}'
+
+# 4. Verify
+curl http://localhost:3001/v1/auth/status \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+OAuth credentials persist in the gateway_data volume. Re-authentication only needed if the token expires.
+
+**Option B: API Key** — Set `ANTHROPIC_API_KEY` in `.env`. Simpler but requires a paid API key.
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ## API Overview
