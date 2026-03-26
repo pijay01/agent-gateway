@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Gateway API Reference — DiemIT Wiki</title>
+<link rel="stylesheet" href="../_assets/style.css">
+<style>
+  .method-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .method-badge.get { background: #ECFDF5; color: #059669; border: 1px solid #A7F3D0; }
+  .method-badge.post { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
+  .method-badge.put { background: #FFFBEB; color: #B45309; border: 1px solid #FDE68A; }
+  .method-badge.delete { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+  .endpoint-path {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    vertical-align: middle;
+  }
+  .auth-tag {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .auth-tag.required { background: #FEF2F2; color: #B91C1C; }
+  .auth-tag.none { background: #ECFDF5; color: #059669; }
+  .param-table { margin: 8px 0 16px; }
+  .param-table th { font-size: 11px; }
+  .param-table td { font-size: 12.5px; }
+  .param-table code { font-size: 11px; }
+  .endpoint-section {
+    margin: 32px 0 40px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .endpoint-section:first-of-type { border-top: none; padding-top: 0; }
+  .event-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+  .event-card h4 {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .event-card p {
+    font-size: 12.5px;
+    margin-bottom: 8px;
+  }
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin: 24px 0 40px;
+  }
+  .toc h4 {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+  .toc ol {
+    margin: 0 0 0 18px;
+    font-size: 13.5px;
+  }
+  .toc li { margin-bottom: 4px; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<nav class="wiki-nav">
+  <a href="/wiki/">← Wiki</a>
+  <span class="wiki-breadcrumb">Agent Gateway / API Reference</span>
+</nav>
+
+<article class="wiki-article">
+  <h1>Agent Gateway <span>API Reference</span></h1>
+  <p class="wiki-meta">Last updated: 2026-03-26 · Epic: <a href="https://diemit.atlassian.net/browse/MVP-2453">MVP-2453</a> · <a href="https://github.com/diem2001/agent-gateway">GitHub</a></p>
+
+  <p>The Agent Gateway is a standalone REST API service wrapping the <strong>Claude Agent SDK</strong>. It exposes Claude Code's agentic capabilities (Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch) over HTTP with <strong>NDJSON streaming</strong>, session management, workspace file CRUD, and automatic retry with exponential backoff.</p>
+
+  <div class="toc">
+    <h4>Contents</h4>
+    <ol>
+      <li><a href="#auth">Authentication</a></li>
+      <li><a href="#api-overview">API Overview</a></li>
+      <li><a href="#ep-health">Health Check</a></li>
+      <li><a href="#ep-query">Query (Run Agent)</a></li>
+      <li><a href="#ep-events">Query Events (Replay)</a></li>
+      <li><a href="#ep-sessions">Sessions</a></li>
+      <li><a href="#ep-settings">Settings</a></li>
+      <li><a href="#ep-logging">Logging</a></li>
+      <li><a href="#ep-ssh">SSH Keys</a></li>
+      <li><a href="#ep-auth-status">Anthropic Auth Status</a></li>
+      <li><a href="#ep-auth-login">Anthropic Auth Login</a></li>
+      <li><a href="#ep-auth-code">Anthropic Auth Submit Code</a></li>
+      <li><a href="#ep-workspace">Workspace (Memory, Agents, Skills)</a></li>
+      <li><a href="#ndjson">NDJSON Event Reference</a></li>
+      <li><a href="#session-mgmt">Session Management</a></li>
+      <li><a href="#deployment">Deployment Guide</a></li>
+      <li><a href="#architecture">Architecture</a></li>
+    </ol>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="auth">Authentication</h2>
+
+  <p>All endpoints except <code>/health</code> require a Bearer token. API keys are configured via the <code>API_KEYS</code> environment variable as comma-separated <code>label:secret</code> pairs.</p>
+
+<pre><code># .env
+API_KEYS=myapp:sk-gw-abc123,cicd:sk-gw-def456</code></pre>
+
+  <p>Send the secret as a Bearer token in the <code>Authorization</code> header:</p>
+
+<pre><code>Authorization: Bearer sk-gw-abc123</code></pre>
+
+  <p>The label (e.g., <code>myapp</code>) appears in server logs for audit purposes. On invalid or missing credentials, the API returns <code>401</code>:</p>
+
+<pre><code>{"error": "Missing or malformed Authorization header"}
+{"error": "Invalid API key"}</code></pre>
+
+  <!-- ============================================================ -->
+  <h2 id="api-overview">API Overview</h2>
+
+  <table>
+    <thead>
+      <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>GET</strong></td><td><code>/health</code></td><td>No</td><td>Health check</td></tr>
+      <tr><td><strong>POST</strong></td><td><code>/v1/query</code></td><td>Yes</td><td>Run agent query (NDJSON stream)</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/query/:queryId/events</code></td><td>Yes</td><td>Replay/resume event stream</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/sessions</code></td><td>Yes</td><td>List active sessions</td></tr>
+      <tr><td><strong>DELETE</strong></td><td><code>/v1/sessions/:id</code></td><td>Yes</td><td>Delete a session</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/settings</code></td><td>Yes</td><td>Get session settings</td></tr>
+      <tr><td><strong>PUT</strong></td><td><code>/v1/settings</code></td><td>Yes</td><td>Update session settings</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/logging</code></td><td>Yes</td><td>Get log level</td></tr>
+      <tr><td><strong>PUT</strong></td><td><code>/v1/logging</code></td><td>Yes</td><td>Set log level</td></tr>
+      <tr><td><strong>POST</strong></td><td><code>/v1/ssh-keys</code></td><td>Yes</td><td>Upload SSH keys</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/auth/status</code></td><td>Yes</td><td>Check Anthropic login status</td></tr>
+      <tr><td><strong>POST</strong></td><td><code>/v1/auth/login</code></td><td>Yes</td><td>Start Anthropic OAuth flow</td></tr>
+      <tr><td><strong>POST</strong></td><td><code>/v1/auth/submit-code</code></td><td>Yes</td><td>Submit OAuth authorization code</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/memory</code></td><td>Yes</td><td>List memory files</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/memory/*</code></td><td>Yes</td><td>Read memory file</td></tr>
+      <tr><td><strong>PUT</strong></td><td><code>/v1/memory/*</code></td><td>Yes</td><td>Write memory file</td></tr>
+      <tr><td><strong>DELETE</strong></td><td><code>/v1/memory/*</code></td><td>Yes</td><td>Delete memory file</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/agents</code></td><td>Yes</td><td>List agent files</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/agents/*</code></td><td>Yes</td><td>Read agent file</td></tr>
+      <tr><td><strong>PUT</strong></td><td><code>/v1/agents/*</code></td><td>Yes</td><td>Write agent file</td></tr>
+      <tr><td><strong>DELETE</strong></td><td><code>/v1/agents/*</code></td><td>Yes</td><td>Delete agent file</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/skills</code></td><td>Yes</td><td>List skill files</td></tr>
+      <tr><td><strong>GET</strong></td><td><code>/v1/skills/*</code></td><td>Yes</td><td>Read skill file</td></tr>
+      <tr><td><strong>PUT</strong></td><td><code>/v1/skills/*</code></td><td>Yes</td><td>Write skill file</td></tr>
+      <tr><td><strong>DELETE</strong></td><td><code>/v1/skills/*</code></td><td>Yes</td><td>Delete skill file</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-health">Health Check</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/health</span>
+      <span class="auth-tag none">No Auth</span>
+    </p>
+
+    <p>Returns server status, version, uptime, and active session count.</p>
+
+    <h3>Response</h3>
+<pre><code>{
+  "status": "ok",
+  "version": "0.1.0",
+  "uptime": 3600,
+  "sessions": 2
+}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/health</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-query">Query (Run Agent)</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge post">POST</span>
+      <span class="endpoint-path">/v1/query</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Runs a Claude agent query. Returns an <strong>NDJSON stream</strong> (<code>application/x-ndjson</code>) of events as the agent works. The connection stays open until the query completes or the client disconnects.</p>
+
+    <h3>Request Body</h3>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>queryId</code></td><td>string</td><td>Yes</td><td>Unique ID for this query (client-generated UUID)</td></tr>
+        <tr><td><code>prompt</code></td><td>string</td><td>Yes</td><td>The prompt to send to the agent</td></tr>
+        <tr><td><code>sessionId</code></td><td>string</td><td>No</td><td>Session ID for conversation continuity</td></tr>
+        <tr><td><code>systemPrompt</code></td><td>string</td><td>No</td><td>System prompt to configure agent behavior</td></tr>
+        <tr><td><code>model</code></td><td>string</td><td>No</td><td>Claude model to use (e.g., <code>claude-sonnet-4-20250514</code>)</td></tr>
+        <tr><td><code>allowedTools</code></td><td>string[]</td><td>No</td><td>Restrict tools (default: all 8 tools)</td></tr>
+        <tr><td><code>useSession</code></td><td>boolean</td><td>No</td><td>Set to <code>false</code> to skip session management</td></tr>
+        <tr><td><code>sshTarget</code></td><td>string</td><td>No</td><td>SSH target for context (informational)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Response (NDJSON stream)</h3>
+    <p>Each line is a JSON object with a <code>seq</code> (sequence number) and <code>type</code>. See <a href="#ndjson">NDJSON Event Reference</a> for all event types.</p>
+
+<pre><code>{"seq":0,"type":"text","content":"Let me check the disk usage..."}
+{"seq":1,"type":"tool_use","toolName":"Bash","toolUseId":"tu_abc","input":"df -h","startedAt":1711461600000}
+{"seq":2,"type":"tool_result","toolName":"Bash","toolUseId":"tu_abc","output":"/dev/sda1  50G  35G  15G  70% /","durationMs":245}
+{"seq":3,"type":"text","content":"The disk is at 70% usage."}
+{"seq":4,"type":"done","inputTokens":1250,"outputTokens":340,"costUsd":0.0087,"sessionId":"abc-123","context":{"usedTokens":1590,"contextWindow":200000,"percentUsed":0.8,"cacheReadTokens":0,"cacheCreationTokens":0}}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -N -X POST http://localhost:3001/v1/query \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "queryId": "q-001",
+    "prompt": "What files are in the current directory?",
+    "sessionId": "session-1",
+    "systemPrompt": "You are a helpful assistant."
+  }'</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-events">Query Events (Replay)</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/query/:queryId/events</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Replays cached events for a query. If the query is still running, the connection stays open and streams new events in real time. Supports resuming from a specific sequence number.</p>
+
+    <h3>Query Parameters</h3>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>after</code></td><td>integer</td><td>-1</td><td>Only return events with <code>seq &gt; after</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Response</h3>
+    <p>NDJSON stream identical to <code>POST /v1/query</code>. Returns <code>404</code> if the queryId is not found or has expired from the cache.</p>
+
+    <h3>Example</h3>
+<pre><code># Replay all events
+curl -N http://localhost:3001/v1/query/q-001/events \
+  -H "Authorization: Bearer sk-gw-abc123"
+
+# Resume from sequence 5
+curl -N "http://localhost:3001/v1/query/q-001/events?after=5" \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-sessions">Sessions</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/sessions</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Lists all active sessions with their model and last-used timestamp.</p>
+
+    <h3>Response</h3>
+<pre><code>{
+  "sessions": [
+    {
+      "id": "session-1",
+      "model": "claude-sonnet-4-20250514",
+      "lastUsed": 1711461600000
+    }
+  ],
+  "count": 1
+}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/v1/sessions \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge delete">DELETE</span>
+      <span class="endpoint-path">/v1/sessions/:id</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Deletes a session by ID. Returns <code>404</code> if the session does not exist.</p>
+
+    <h3>Response</h3>
+<pre><code>{"deleted": true}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -X DELETE http://localhost:3001/v1/sessions/session-1 \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-settings">Settings</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/settings</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Returns current session settings.</p>
+
+    <h3>Response</h3>
+<pre><code>{"sessionIdleTimeoutMs": 0}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/v1/settings \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge put">PUT</span>
+      <span class="endpoint-path">/v1/settings</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Updates session settings. Currently supports <code>sessionIdleTimeoutMs</code> (set to <code>0</code> to disable auto-cleanup).</p>
+
+    <h3>Request Body</h3>
+<pre><code>{"sessionIdleTimeoutMs": 3600000}</code></pre>
+
+    <h3>Response</h3>
+<pre><code>{"sessionIdleTimeoutMs": 3600000}</code></pre>
+
+    <h3>Example</h3>
+<pre><code># Set 1-hour idle timeout
+curl -X PUT http://localhost:3001/v1/settings \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{"sessionIdleTimeoutMs": 3600000}'</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-logging">Logging</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/logging</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Returns the current log level.</p>
+
+    <h3>Response</h3>
+<pre><code>{"level": "info"}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/v1/logging \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge put">PUT</span>
+      <span class="endpoint-path">/v1/logging</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Changes the log level at runtime. Valid levels: <code>off</code>, <code>info</code>, <code>debug</code>.</p>
+
+    <h3>Request Body</h3>
+<pre><code>{"level": "debug"}</code></pre>
+
+    <h3>Response</h3>
+<pre><code>{"level": "debug", "previous": "info"}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -X PUT http://localhost:3001/v1/logging \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{"level": "debug"}'</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-ssh">SSH Keys</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge post">POST</span>
+      <span class="endpoint-path">/v1/ssh-keys</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Uploads an SSH key pair to the gateway container. The agent can then use SSH to connect to remote servers via Bash tool calls. Keys are written to <code>~/.ssh/</code> with proper permissions (600 for private, 644 for public). An SSH config is auto-generated with <code>StrictHostKeyChecking accept-new</code>.</p>
+
+    <h3>Request Body</h3>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>privateKey</code></td><td>string</td><td>Yes</td><td>PEM-encoded private key</td></tr>
+        <tr><td><code>publicKey</code></td><td>string</td><td>No</td><td>Public key (derived from private if omitted)</td></tr>
+        <tr><td><code>filename</code></td><td>string</td><td>No</td><td>Key filename (default: <code>id_ed25519</code>, alphanumeric + <code>_-</code> only)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Response</h3>
+<pre><code>{
+  "status": "ok",
+  "message": "SSH keys updated",
+  "publicKey": "ssh-ed25519 AAAA... user@host"
+}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -X POST http://localhost:3001/v1/ssh-keys \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "privateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----",
+    "filename": "id_ed25519"
+  }'</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-auth-status">Anthropic Auth: Status</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/auth/status</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Checks whether the Claude CLI inside the container has a valid Anthropic login. This is separate from the gateway's API key auth -- it determines whether the SDK can make API calls to Anthropic.</p>
+
+    <h3>Response (logged in)</h3>
+<pre><code>{"loggedIn": true, "email": "user@example.com"}</code></pre>
+
+    <h3>Response (not logged in)</h3>
+<pre><code>{"loggedIn": false}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/v1/auth/status \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-auth-login">Anthropic Auth: Login</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge post">POST</span>
+      <span class="endpoint-path">/v1/auth/login</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Initiates the Anthropic OAuth login flow. Starts a Claude CLI session inside tmux, navigates through the login prompts, and returns the OAuth authorization URL. The user must open this URL in a browser, authorize, and copy the authorization code.</p>
+
+    <h3>Response</h3>
+<pre><code>{"url": "https://console.anthropic.com/oauth/authorize?..."}</code></pre>
+
+    <h3>Error (timeout)</h3>
+<pre><code>{"error": "Timeout waiting for auth URL"}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -X POST http://localhost:3001/v1/auth/login \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-auth-code">Anthropic Auth: Submit Code</h2>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge post">POST</span>
+      <span class="endpoint-path">/v1/auth/submit-code</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Submits the OAuth authorization code obtained from the browser. The gateway sends it to the running Claude CLI tmux session and polls for login success. Requires a prior call to <code>POST /v1/auth/login</code>.</p>
+
+    <h3>Request Body</h3>
+
+    <table class="param-table">
+      <thead>
+        <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>code</code></td><td>string</td><td>Yes</td><td>OAuth authorization code from the browser</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Response (success)</h3>
+<pre><code>{"success": true, "loggedIn": true, "email": "user@example.com"}</code></pre>
+
+    <h3>Error</h3>
+<pre><code>{"error": "No auth login session running. Call POST /v1/auth/login first."}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -X POST http://localhost:3001/v1/auth/submit-code \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{"code": "ey..."}'</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ep-workspace">Workspace (Memory, Agents, Skills)</h2>
+
+  <p>The gateway provides CRUD endpoints for three workspace sections: <code>memory</code>, <code>agents</code>, and <code>skills</code>. Files are stored under <code>$WORKSPACE_ROOT</code> (default: <code>$HOME/.claude</code>). All paths are protected against directory traversal attacks.</p>
+
+  <p>The following operations are available for each section (<code>memory</code>, <code>agents</code>, <code>skills</code>):</p>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/{section}</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Lists all files in the section. Returns a recursive file listing with path, size, and modification time.</p>
+
+    <h3>Response</h3>
+<pre><code>{
+  "files": [
+    {
+      "path": "MEMORY.md",
+      "size": 1234,
+      "modified": "2026-03-26T10:00:00.000Z"
+    },
+    {
+      "path": "project/notes.md",
+      "size": 567,
+      "modified": "2026-03-25T15:30:00.000Z"
+    }
+  ]
+}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/v1/memory \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge get">GET</span>
+      <span class="endpoint-path">/v1/{section}/{path}</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Reads a file. Returns <code>application/json</code> for <code>.json</code> files, <code>text/plain</code> for all others.</p>
+
+    <h3>Example</h3>
+<pre><code>curl http://localhost:3001/v1/memory/MEMORY.md \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge put">PUT</span>
+      <span class="endpoint-path">/v1/{section}/{path}</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Creates or overwrites a file. Parent directories are created automatically. Send the file content as the request body (JSON or plain text).</p>
+
+    <h3>Response</h3>
+<pre><code>{"status": "ok", "path": "memory/MEMORY.md"}</code></pre>
+
+    <h3>Example</h3>
+<pre><code># Write plain text
+curl -X PUT http://localhost:3001/v1/memory/MEMORY.md \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: text/plain" \
+  -d '# Agent Memory
+
+This server manages web infrastructure.'
+
+# Write JSON
+curl -X PUT http://localhost:3001/v1/agents/config.json \
+  -H "Authorization: Bearer sk-gw-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "server-admin", "model": "claude-sonnet-4-20250514"}'</code></pre>
+  </div>
+
+  <div class="endpoint-section">
+    <p>
+      <span class="method-badge delete">DELETE</span>
+      <span class="endpoint-path">/v1/{section}/{path}</span>
+      <span class="auth-tag required">Auth Required</span>
+    </p>
+
+    <p>Deletes a file. Returns <code>404</code> if the file does not exist.</p>
+
+    <h3>Response</h3>
+<pre><code>{"status": "ok"}</code></pre>
+
+    <h3>Example</h3>
+<pre><code>curl -X DELETE http://localhost:3001/v1/memory/old-notes.md \
+  -H "Authorization: Bearer sk-gw-abc123"</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="ndjson">NDJSON Event Reference</h2>
+
+  <p>All events include a <code>seq</code> field (incrementing integer starting at 0) and a <code>type</code> field. Events are streamed as newline-delimited JSON (<code>application/x-ndjson</code>).</p>
+
+  <div class="event-card">
+    <h4>text</h4>
+    <p>Assistant text output (streamed incrementally).</p>
+<pre><code>{"seq": 0, "type": "text", "content": "Let me check..."}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>tool_use</h4>
+    <p>Agent is invoking a tool. <code>input</code> is a human-readable summary (command for Bash, file path for Read/Write/Edit, pattern for Glob/Grep).</p>
+<pre><code>{"seq": 1, "type": "tool_use", "toolName": "Bash", "toolUseId": "tu_abc123", "input": "df -h /var", "startedAt": 1711461600000}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>tool_result</h4>
+    <p>Tool execution completed. Output is truncated to 3000 characters. <code>durationMs</code> is null if timing data is unavailable.</p>
+<pre><code>{"seq": 2, "type": "tool_result", "toolName": "Bash", "toolUseId": "tu_abc123", "output": "/dev/sda1  50G  35G  15G  70% /var", "durationMs": 245}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>rate_limited</h4>
+    <p>Rate limit detected. The gateway will retry automatically. Emitted both when the retry layer detects an error and when the SDK stream reports a rate limit event.</p>
+<pre><code>// Retry layer (error-based)
+{"seq": 3, "type": "rate_limited", "status": "retrying", "attempt": 1, "waitMs": 1000}
+
+// SDK stream event
+{"seq": 3, "type": "rate_limited", "status": "waiting", "retryAfterMs": 5000}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>sdk_status</h4>
+    <p>Claude SDK status change. Currently emitted when context compaction starts (<code>"compacting"</code>) and ends (<code>null</code>).</p>
+<pre><code>{"seq": 4, "type": "sdk_status", "status": "compacting"}
+{"seq": 5, "type": "sdk_status", "status": null}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>sdk_compact_complete</h4>
+    <p>Context compaction completed. Reports the trigger reason and pre-compaction token count.</p>
+<pre><code>{"seq": 6, "type": "sdk_compact_complete", "trigger": "auto", "preTokens": 180000}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>done</h4>
+    <p>Query completed successfully. Includes token usage, cost, and context window statistics. Always the last event on success.</p>
+<pre><code>{
+  "seq": 7,
+  "type": "done",
+  "inputTokens": 1250,
+  "outputTokens": 340,
+  "costUsd": 0.0087,
+  "sessionId": "abc-123-def",
+  "context": {
+    "usedTokens": 1590,
+    "contextWindow": 200000,
+    "percentUsed": 0.8,
+    "cacheReadTokens": 500,
+    "cacheCreationTokens": 200
+  }
+}</code></pre>
+  </div>
+
+  <div class="event-card">
+    <h4>error</h4>
+    <p>Query failed with an error. Always the last event on failure.</p>
+<pre><code>{"seq": 3, "type": "error", "content": "Connection refused: ssh root@example.com"}</code></pre>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="session-mgmt">Session Management</h2>
+
+  <p>Sessions enable <strong>multi-turn conversations</strong> with the Claude agent. A client provides a <code>sessionId</code> with each query, and the gateway maps it to an internal Claude SDK session UUID.</p>
+
+  <h3>How Sessions Work</h3>
+
+  <div class="vflow">
+    <div class="vflow-step">
+      <div class="vflow-num n-blue">1</div>
+      <div class="vflow-body">
+        <h4 class="c-blue">Client sends query with sessionId</h4>
+        <p>Client includes a stable <code>sessionId</code> (e.g., <code>"chat-user-42"</code>) in the POST /v1/query request body.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-amber">2</div>
+      <div class="vflow-body">
+        <h4 class="c-amber">Gateway resolves session</h4>
+        <p>If a session exists with the same ID, systemPrompt, and model, the existing Claude session is reused (conversation continues). If the prompt or model changed, a new Claude session is created under the same client ID.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-green">3</div>
+      <div class="vflow-body">
+        <h4 class="c-green">Session persists across restarts</h4>
+        <p>Sessions are persisted to disk (debounced write to <code>SESSION_PERSIST_PATH</code>). On restart, sessions are restored and expired ones filtered out.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-slate">4</div>
+      <div class="vflow-body">
+        <h4 class="c-slate">Idle cleanup (optional)</h4>
+        <p>If <code>SESSION_IDLE_TIMEOUT_MS &gt; 0</code>, a background timer runs every 5 minutes and removes sessions that have been idle longer than the timeout.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>Stateless Queries</h3>
+  <p>Set <code>"useSession": false</code> in the request body to skip session management entirely. A random session ID is generated for the query, and no session state is stored.</p>
+
+  <h3>Managing Sessions via API</h3>
+  <ul>
+    <li><code>GET /v1/sessions</code> -- list all active sessions with model and lastUsed timestamp</li>
+    <li><code>DELETE /v1/sessions/:id</code> -- remove a specific session</li>
+    <li><code>PUT /v1/settings</code> -- configure <code>sessionIdleTimeoutMs</code></li>
+  </ul>
+
+  <!-- ============================================================ -->
+  <h2 id="deployment">Deployment Guide</h2>
+
+  <h3>Standalone Docker Compose</h3>
+
+  <p>The simplest way to run the Agent Gateway:</p>
+
+<pre><code># Clone and configure
+git clone https://github.com/diem2001/agent-gateway.git
+cd agent-gateway
+cp .env.example .env
+
+# Edit .env — set at minimum:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   API_KEYS=myapp:your-secret-key
+
+# Build and start
+docker compose up -d --build
+
+# Verify
+curl http://localhost:3001/health</code></pre>
+
+  <h3>Environment Variables</h3>
+
+  <table>
+    <thead>
+      <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>--</td><td>Anthropic API key (required)</td></tr>
+      <tr><td><code>API_KEYS</code></td><td><code>default:changeme</code></td><td>Client auth keys (<code>label:secret,...</code>)</td></tr>
+      <tr><td><code>LOG_LEVEL</code></td><td><code>info</code></td><td>Logging level (<code>off</code>, <code>info</code>, <code>debug</code>)</td></tr>
+      <tr><td><code>SESSION_IDLE_TIMEOUT_MS</code></td><td><code>0</code></td><td>Auto-expire idle sessions (0 = disabled)</td></tr>
+      <tr><td><code>PORT</code></td><td><code>3001</code></td><td>HTTP listen port</td></tr>
+      <tr><td><code>HOST</code></td><td><code>0.0.0.0</code></td><td>Bind address</td></tr>
+      <tr><td><code>SESSION_PERSIST_PATH</code></td><td><code>/data/sessions.json</code></td><td>Session persistence file (inside Docker volume)</td></tr>
+      <tr><td><code>EVENT_CACHE_TTL_MS</code></td><td><code>1800000</code></td><td>Query event cache TTL (30 min)</td></tr>
+      <tr><td><code>WORKSPACE_ROOT</code></td><td><code>$HOME/.claude</code></td><td>Root dir for memory/agents/skills</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Docker Architecture</h3>
+
+  <div class="diagram-wrapper">
+    <div class="diagram-title">Container Architecture</div>
+    <div class="docker-arch">
+      <div class="docker-arch-label">docker compose</div>
+
+      <div class="docker-layer" style="grid-template-columns: 1fr;">
+        <div class="d-box theme-green">
+          <div class="port-badge">
+            <div class="port-row ext"><span class="port-label">ext</span><span class="port-val">:3001</span></div>
+            <div class="port-row int"><span class="port-label">int</span><span class="port-val">:3001</span></div>
+          </div>
+          <div class="d-box-name c-green">agent-gateway</div>
+          <div class="d-box-detail">Express 5 + Claude Agent SDK</div>
+          <div class="d-box-detail">POST /v1/query (NDJSON stream)</div>
+          <div class="d-box-detail">Session mgmt + Workspace CRUD</div>
+          <div class="d-box-detail">SSH client + tmux (for auth flow)</div>
+          <div class="d-tag t-green">Node.js 22</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3>What the Container Includes</h3>
+
+  <p>The Docker image is based on <code>node:22-bookworm</code> and includes system tools required by the Claude Agent SDK:</p>
+
+  <ul>
+    <li><strong>bash, coreutils, findutils, grep, procps</strong> -- for Bash, Glob, Grep tools</li>
+    <li><strong>git</strong> -- for repository operations</li>
+    <li><strong>openssh-client</strong> -- for SSH connectivity to remote servers</li>
+    <li><strong>tmux</strong> -- for the Anthropic OAuth login flow</li>
+    <li><strong>rsync, wget, curl, jq, python3</strong> -- general utilities</li>
+    <li><strong>@anthropic-ai/claude-code</strong> -- Claude CLI (globally installed)</li>
+  </ul>
+
+  <h3>Entrypoint Behavior</h3>
+
+  <p>The container starts as root and performs setup before dropping to the <code>node</code> user:</p>
+
+  <ol>
+    <li>Creates workspace directories (<code>~/.claude/memory</code>, <code>~/.claude/agents</code>, <code>~/.claude/skills</code>)</li>
+    <li>Writes Claude settings with broad tool permissions (<code>bypassPermissions</code>)</li>
+    <li>Copies SSH keys from the data volume (<code>/data/ssh/</code>) to <code>~/.ssh/</code> if they exist</li>
+    <li>Fixes ownership and drops to <code>node</code> user via <code>gosu</code></li>
+    <li>Starts the Express server</li>
+  </ol>
+
+  <h3>Persistent Data</h3>
+
+  <p>The <code>gateway_data</code> Docker volume is mounted at <code>/data</code> and stores:</p>
+
+  <ul>
+    <li><code>/data/sessions.json</code> -- session state (survives container restarts)</li>
+    <li><code>/data/ssh/</code> -- SSH keys (copied to <code>~/.ssh/</code> on each start)</li>
+  </ul>
+
+  <h3>Embedding in an Existing Stack</h3>
+
+  <p>To add the Agent Gateway as a service in an existing <code>docker-compose.yml</code>:</p>
+
+<pre><code>services:
+  agent-gateway:
+    build: ./path/to/agent-gateway
+    container_name: agent-gateway
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - gateway_data:/data
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - API_KEYS=${API_KEYS:-default:changeme}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SESSION_PERSIST_PATH=/data/sessions.json
+      - SESSION_IDLE_TIMEOUT_MS=${SESSION_IDLE_TIMEOUT_MS:-0}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  gateway_data:</code></pre>
+
+  <p>Other services can reach the gateway at <code>http://agent-gateway:3001</code> on the Docker network. The port <code>127.0.0.1:3001</code> binding ensures it is not exposed publicly -- use a reverse proxy (nginx, Traefik) for external access with SSL.</p>
+
+  <h3>Reverse Proxy (nginx)</h3>
+
+<pre><code>location /agent-gateway/ {
+    proxy_pass http://127.0.0.1:3001/;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_buffering off;           # Required for NDJSON streaming
+    proxy_read_timeout 300s;       # Agent queries can be long-running
+}</code></pre>
+
+  <div class="verdict">
+    <h4>Important: disable proxy buffering</h4>
+    <p>NDJSON streaming requires <code>proxy_buffering off</code> in nginx. Without it, events are buffered and delivered in batches instead of real-time. The gateway also sets <code>X-Accel-Buffering: no</code> on streaming responses as a fallback.</p>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="architecture">Architecture</h2>
+
+  <h3>Request Flow</h3>
+
+  <div class="vflow">
+    <div class="vflow-step">
+      <div class="vflow-num n-slate">1</div>
+      <div class="vflow-body">
+        <h4 class="c-slate">HTTP Request</h4>
+        <p>Client sends <code>POST /v1/query</code> with Bearer token, queryId, prompt, and optional sessionId.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-amber">2</div>
+      <div class="vflow-body">
+        <h4 class="c-amber">Auth Middleware</h4>
+        <p>Validates API key against <code>API_KEYS</code> env var. Attaches client label for audit logging. Rejects with 401 if invalid.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-blue">3</div>
+      <div class="vflow-body">
+        <h4 class="c-blue">Session Resolution</h4>
+        <p>Looks up or creates a Claude SDK session. Reuses existing session if prompt and model match. Creates new if first query or config changed.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-green">4</div>
+      <div class="vflow-body">
+        <h4 class="c-green">Agent SDK Execution</h4>
+        <p>Runs <code>query()</code> from Claude Agent SDK with tools (Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch). Streams events via NDJSON as the agent works.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-red">5</div>
+      <div class="vflow-body">
+        <h4 class="c-red">Retry Layer</h4>
+        <p>On rate limits or empty responses: exponential backoff (1s, 2s, 4s), up to 3 retries, 60s total budget. Emits <code>rate_limited</code> events to the client.</p>
+      </div>
+    </div>
+    <div class="vflow-step">
+      <div class="vflow-num n-slate">6</div>
+      <div class="vflow-body">
+        <h4 class="c-slate">Event Cache + Done</h4>
+        <p>All events are cached by queryId for replay via <code>GET /v1/query/:id/events</code>. Cache entries expire after 30 minutes (configurable). Final <code>done</code> event includes token usage and cost.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3>Component Diagram</h3>
+
+  <div class="seq">
+    <div class="seq-section">Query Flow</div>
+    <div class="seq-row">
+      <div class="seq-from sf-slate">Client</div>
+      <div class="seq-msg"><div class="seq-line"></div><span class="seq-label">POST /v1/query</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-amber">Auth</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-from sf-amber">Auth</div>
+      <div class="seq-msg"><div class="seq-line"></div><span class="seq-label">validate Bearer</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-blue">Sessions</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-from sf-blue">Sessions</div>
+      <div class="seq-msg"><div class="seq-line"></div><span class="seq-label">resolve/create</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-green">Agent SDK</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-from sf-green">Agent SDK</div>
+      <div class="seq-msg"><div class="seq-line green"></div><span class="seq-label">tool calls (Bash, Read, ...)</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-slate">System</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-from sf-slate">System</div>
+      <div class="seq-msg"><div class="seq-line dashed"></div><span class="seq-label">tool output</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-green">Agent SDK</div>
+    </div>
+    <div class="seq-section">Response Stream</div>
+    <div class="seq-row">
+      <div class="seq-from sf-green">Agent SDK</div>
+      <div class="seq-msg"><div class="seq-line green"></div><span class="seq-label">NDJSON events (text, tool_use, tool_result, ...)</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-slate">Client</div>
+    </div>
+    <div class="seq-row">
+      <div class="seq-from sf-green">Agent SDK</div>
+      <div class="seq-msg"><div class="seq-line dashed"></div><span class="seq-label">cache events by queryId</span><div class="seq-arrow">→</div></div>
+      <div class="seq-to sf-blue">Event Cache</div>
+    </div>
+  </div>
+
+  <h2>Links</h2>
+
+  <ul>
+    <li><a href="architecture.md">Architecture (Markdown)</a></li>
+    <li><a href="https://diemit.atlassian.net/browse/MVP-2453">MVP-2453 -- Agent Gateway Epic</a></li>
+    <li><a href="https://github.com/diem2001/agent-gateway">GitHub Repository</a></li>
+    <li><a href="https://docs.anthropic.com/en/docs/claude-agent-sdk">Claude Agent SDK Documentation</a></li>
+  </ul>
+
+</article>
+
+<script src="../_assets/copy.js"></script>
+</body>
+</html>
